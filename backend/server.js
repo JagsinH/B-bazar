@@ -1,12 +1,10 @@
 import express from 'express';
 import cors from 'cors';
-
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 dotenv.config();
-import pkg from 'pg';
-const { Pool } = pkg;
 
 
 const app = express();
@@ -17,34 +15,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// PostgreSQL Connection
-const pool = new Pool({
-  user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'auth_db',
-  password: process.env.DB_PASSWORD || 'password',
-  port: process.env.DB_PORT || 5432,
-});
-
-// Database initialization
-const initDb = async () => {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(255) UNIQUE NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log('Database initialized');
-  } catch (error) {
-    console.error('Error initializing database:', error);
-  }
-};
-
-initDb();
+const prisma = new PrismaClient();
 
 // Middleware to verify JWT token
 const authenticateToken = (req, res, next) => {
@@ -71,15 +42,11 @@ app.post('/api/auth/signup', async (req, res) => {
     const { username, email, password } = req.body;
     
     // Check if email already exists
-    const emailCheck = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    if (emailCheck.rows.length > 0) {
+    const emailCheck = await prisma.user.findUnique({where:{
+      email:email,
+    }})
+    if (emailCheck!=null) {
       return res.status(400).json({ message: 'Email already in use' });
-    }
-    
-    // Check if username already exists
-    const usernameCheck = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    if (usernameCheck.rows.length > 0) {
-      return res.status(400).json({ message: 'Username already taken' });
     }
     
     // Hash password
@@ -87,16 +54,20 @@ app.post('/api/auth/signup', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
     
     // Insert user into database
-    const result = await pool.query(
-      'INSERT INTO users (username, email, password) VALUES ($1, $2, $3) RETURNING id, username, email',
-      [username, email, hashedPassword]
-    );
+
+    const result = await prisma.user.create({
+      data:{
+        email:email,
+        name:username,
+        password:hashedPassword,
+      }
+    }).then(console.log(`user created`))
     
-    const user = result.rows[0];
+    const user = result;
     
     // Generate JWT token
     const token = jwt.sign(
-      { id: user.id, username: user.username, email: user.email },
+      { id: user.id, username: user.name, email: user.email },
       process.env.JWT_SECRET || 'your_jwt_secret',
       { expiresIn: '1d' }
     );
@@ -112,7 +83,7 @@ app.post('/api/auth/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ message: 'Server error during registration' });
+    res.status(500).json({ message: 'Try again with different email' });
   }
 });
 
@@ -122,8 +93,11 @@ app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     
     // Check if user exists
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    const user = result.rows[0];
+    const result = await prisma.user.findUnique({where:{
+      email:email
+    }})
+    console.log(result)
+    const user = result;
     
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
@@ -137,17 +111,18 @@ app.post('/api/auth/login', async (req, res) => {
     
     // Generate JWT token
     const token = jwt.sign(
-      { id: user.id, username: user.username, email: user.email },
+      { id: user.id, username: user.name, email: user.email },
       process.env.JWT_SECRET || 'your_jwt_secret',
       { expiresIn: '1d' }
     );
+    console.log(token);
     
     res.status(200).json({
       message: 'Login successful',
       token,
       user: {
         id: user.id,
-        username: user.username,
+        username: user.name,
         email: user.email
       }
     });
@@ -160,19 +135,22 @@ app.post('/api/auth/login', async (req, res) => {
 // Get current user
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, username, email FROM users WHERE id = $1', [req.user.id]);
-    const user = result.rows[0];
-    
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { id: true, name: true, email: true },
+    });
+
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    
+
     res.status(200).json(user);
   } catch (error) {
     console.error('Error fetching user data:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
+
 
 // Start the server
 app.listen(PORT, () => {
