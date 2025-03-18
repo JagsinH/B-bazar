@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
+import {orderRoutes} from './routes/orderRoutes.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
@@ -150,6 +151,8 @@ app.get('/api/auth/me', authenticateToken, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+// Routes
+app.use('/api', orderRoutes);
 
 
 // Start the server
