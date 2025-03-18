@@ -26,7 +26,7 @@ model order{
   userId  String
   restaurantId  String 
   menuItems  Json
-  totalPrice  float
+  totalPrice  Float
   status    status  @default(PLACED)
   created_at DateTime @default(now())
   

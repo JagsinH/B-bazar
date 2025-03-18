@@ -1,27 +1,32 @@
 import express from 'express';
 import {PrismaClient} from '@prisma/client';
 
-const router = express.Router();
+const orderRouter = express.Router();
 const prisma = new PrismaClient();
 
-router.post('/order', async (req, res) => {
+orderRouter.post('/order', async (req, res) => {
     try{
-        const{userId, restrauntId, menuitems, totalPrice} = req.body;
+        const{userId, restaurantId, menuItems, totalPrice} = req.body;
+        console.log(userId)
+        if (typeof menuItems !== "object") {
+            return res.status(400).json({ error: "menuItems must be a valid JSON object or array" });
+        }
         const order = await prisma.order.create({
             data: {
-                userId: userId,
-                restrauntId: restrauntId,
-                menuitems: menuitems,
-                totalPrice: totalPrice
+                userId,
+                restaurantId,
+                menuItems,
+                totalPrice
             }
         });
+        console.log(order)
         res.status(201).json({message: 'Order placed successfully', order});
-    }catch(error){
-        res.status(500).json({error: 'failed to place order'});
+    }catch(err){
+        res.status(500).json({error: err.message});
     }
 });
 //get all orders for a specific users
-router.get('/orders/:userId', async (req, res) => {
+orderRouter.get('/orders/:userId', async (req, res) => {
     try{
         const userId = req.params.userId;
         const orders = await prisma.order.findMany({
@@ -36,7 +41,7 @@ router.get('/orders/:userId', async (req, res) => {
 });
 
 //3. get details of a specific order
-router.get('/order/:orderId', async (req, res) => {
+orderRouter.get('/order/:orderId', async (req, res) => {
     try{
         const orderId = req.params.orderId;
         const order = await prisma.order.findUnique({
@@ -54,7 +59,7 @@ router.get('/order/:orderId', async (req, res) => {
 });
 
 //4. update order status
-router.put('order/:orderId', async (req, res) => {
+orderRouter.put('/order/:orderId', async (req, res) => {
     try{
         const orderId = req.params.orderId;
         const {status} = req.body;
@@ -72,4 +77,4 @@ router.put('order/:orderId', async (req, res) => {
     }
 });
 
-export default router;
+export default orderRouter;
